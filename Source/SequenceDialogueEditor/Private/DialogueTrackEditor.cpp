@@ -144,29 +144,36 @@ void FDialogueTrackEditor::AddNewSection( UMovieScene* MovieScene, UMovieSceneTr
 	const FScopedTransaction Transaction( LOCTEXT( "AddDialogueSection_Transaction", "Add Dialogue Trigger" ) );
 	dialogueTrack->Modify();
 
-	UMovieSceneDialogueSection* dialogueSection = CastChecked<UMovieSceneDialogueSection>(dialogueTrack->CreateNewSection() );
-
-	//float startSliderTime = GetSequencer()->GetLocalTime();
-	//float endTime = FMath::Min(startSliderTime + 0.5f, MovieScene->GetPlaybackRange().GetUpperBoundValue());
-	//dialogueSection->SetStartTime(startSliderTime);
-	//dialogueSection->SetEndTime(endTime);
 	FFrameNumber startSliderTime = MovieScene->GetPlaybackRange().GetLowerBoundValue();
-	FFrameNumber endTime = MovieScene->GetPlaybackRange().GetUpperBoundValue();
+
+	FFrameNumber LastSectionEndTime = startSliderTime;
+	for (auto Section : dialogueTrack->GetAllSections())
+	{
+		TRange<FFrameNumber> SectionRange = Section->GetRange();
+		LastSectionEndTime = SectionRange.GetUpperBoundValue() > LastSectionEndTime ? SectionRange.GetUpperBoundValue() : LastSectionEndTime;
+	}
+
+	UMovieSceneDialogueSection* dialogueSection = CastChecked<UMovieSceneDialogueSection>(dialogueTrack->CreateNewSection() );
+	if (dialogueTrack->GetAllSections().Num() > 0)
+	{
+		UMovieSceneDialogueSection* LastSection = Cast<UMovieSceneDialogueSection>(dialogueTrack->GetAllSections().Last());
+		dialogueSection->SetDialogueSpeakerName(LastSection->GetDialogueSpeakerName());
+	}
+
+	startSliderTime = LastSectionEndTime;
+	FFrameRate TickResolution = MovieScene->GetTickResolution();
+	FFrameNumber SectionLength = (0.5 * TickResolution).FloorToFrame();
+	FFrameNumber endTime = startSliderTime + SectionLength;
 	if (endTime < startSliderTime)
 	{
 		FFrameNumber Temp = startSliderTime;
 		startSliderTime = endTime;
 		endTime = Temp;
 	}
-	dialogueSection->SetStartFrame(startSliderTime);
-	dialogueSection->SetEndFrame(endTime);
 
-	int32 RowIndex = -1;
-	for ( const UMovieSceneSection* Section : dialogueTrack->GetAllSections() )
-	{
-		RowIndex = FMath::Max( RowIndex, Section->GetRowIndex() );
-	}
-	dialogueSection->SetRowIndex(RowIndex + 1);
+	dialogueSection->SetRange(TRange<FFrameNumber>(startSliderTime, TRangeBound<FFrameNumber>::Exclusive(endTime)));
+
+	dialogueSection->SetRowIndex(0);
 
 	dialogueTrack->AddSection( *dialogueSection);
 }
